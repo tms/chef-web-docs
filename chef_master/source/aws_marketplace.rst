@@ -376,8 +376,6 @@ After verifying that your existing Chef server installation is up to date, do th
 
    Replace ``ec2-52-6-31-230.compute-1.amazonaws.com`` with your new public DNS name and ``your_org`` with your organization name.
 
-ace ``ec2-52-6-31-230.compute-1.amazonaws.com`` with your new public DNS name and ``your_org`` with your organization name.
-
 Chef Compliance AMI
 =====================================================
 Follow the steps in the sections below to install Chef Compliance in AWS Marketplace.

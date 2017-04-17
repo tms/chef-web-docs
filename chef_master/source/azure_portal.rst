@@ -54,6 +54,111 @@ Chef provides a fully functional Chef Automate server that can be launched from 
       $ cd ~/Downloads/starter_kit/chef-repo
       $ knife bootstrap chef-automate-01.eastus.cloudapp.azure.com --ssh-user azure --sudo
 
+
+Migrate to Chef Automate on Microsoft Azure
+-------------------------------------------
+The process of migrating from an existing Chef server installation to the Chef Automate Azure VM image differs depending on which software version is being used and the location in which it is deployed. In all scenarios, data is first migrated to the latest Chef server schema, after which it is migrated to the Chef Automate Azure VM image.
+
+* Verify that the latest version of the Chef server is installed by using the platform package manager: ``rpm -qa | grep chef-server-core`` and compare the result to the latest version available on the `downloads site <https://downloads.chef.io/>`__. If this is not the latest version, download the package, and then `upgrade </upgrade_server.html#from-chef-server-12>`_ to the latest version.
+* Upgrade an Enterprise Chef node to the latest version of the Chef server by following the `enterprise upgrade instructions </upgrade_server.html#from-chef-server-oec>`_.
+* Upgrade an Open Source Chef node to the latest version of the Chef server by following the `open source upgrade instructions </upgrade_server.html#from-chef-server-osc>`_.
+
+After verifying that your existing Chef server installation is up to date, do the following to migrate to the Chef Automate Azure VM instance:
+
+#. .. tag chef_server_backup_for_automate_azure
+
+   Backup the data on the Chef server using ``knife ec backup``. This method will export all of your existing Chef server data as JSON. We'll then re-import the same data into a new Chef Automate cluster. We use the JSON-based backup and restore procedure because the Chef server data on the Chef Automate VM image is stored in shared databases so copying of binary files won't work.
+
+   .. code-block:: bash
+
+      $ mkdir -p /tmp/chef-backup
+      $ /opt/opscode/embedded/bin/knife ec backup /tmp/chef-backup --with-user-sql --with-key-sql
+      $ tar -czvf chef-backup.tgz -C /tmp/chef-backup
+
+   .. end_tag
+
+#. Copy the resulting tarball to your Amazon Machine Images (AMI) instance:
+
+   .. code-block:: bash
+
+      $ scp /tmp/chef-backup.tgz [TODO: Need login name]@<AZURE MARKETPLACE VM IP ADDRESS>:/tmp/
+
+#. Login to your Chef Automate VM and ensure that it is running the latest version of the Chef server:
+
+   .. code-block:: bash
+
+      $ chef-marketplace-ctl upgrade -y
+
+#. .. tag chef_automate_reconfigure_for_marketplace
+
+
+   Reconfigure Chef Automate and the Chef server:
+
+   .. code-block:: bash
+
+      $ sudo automate-ctl reconfigure
+      $ sudo chef-server-ctl reconfigure
+
+   .. end_tag
+
+#. .. tag chef_server_backup_restore_for_automate
+
+   Restore the backup:
+
+   .. code-block:: bash
+
+      $ mkdir -p /tmp/chef-backup
+      $ mv /tmp/chef-backup.tgz /tmp/chef-backup
+      $ cd /tmp/chef-backup
+      $ tar -ztf chef-backup.tgz
+      $ /opt/opscode/embedded/bin/knife ec restore /tmp/chef-backup --with-user-sql --with-key-sql
+
+   .. end_tag
+
+#. .. tag install_update_aws_knife_rb
+
+   Open ``.chef/knife.rb`` in a text editor and modify the ``chef_server_url`` with your new public DNS. For example:
+
+   .. code-block:: bash
+
+      $ vim ~/chef-repo/.chef/knife.rb
+
+   will open a ``knife.rb`` file similar to:
+
+   .. code-block:: ruby
+
+      current_dir = ::File.dirname(__FILE__)
+      log_level                :info
+      log_location             $stdout
+      node_name                'your_username'
+      client_key               "#{current_dir}/your_username.pem"
+      validation_client_name   'your_orgname-validator'
+      validation_key           "#{current_dir}/your_orgname-validator.pem"
+      chef_server_url          'https://<YOUR NEW PUBLIC DNS>/organizations/your_org'
+      cookbook_path            ["#{current_dir}/../cookbooks"]
+
+   .. end_tag
+
+#. .. tag install_aws_chef_server_knife_ssl_fetch
+
+   Run ``knife ssl fetch`` to add the Chef server SSL certificate as a trusted SSL certificate.
+
+   .. end_tag
+
+#. .. tag install_aws_chef_server_knife_client_list
+
+   Run ``knife client list`` to test the connection to the Chef server. The command should return ``<orgname>-validator``, where ``<orgname>`` is the name of the organization that was created previously.
+
+   .. end_tag
+
+#. Update the ``/etc/chef/client.rb`` on all of your nodes to use the new public DNS.  For example:
+
+   .. code-block:: none
+
+      $ knife ssh name:* 'sudo sed -ie "s/chef_server_url.*/chef_server_url 'https://[TODO: Need Azure VM DNS name]/organizations/your_org'/" /etc/chef/client.rb
+
+   Replace ``[TODO: Need Azure VM DNS name]`` with your new public DNS name and ``your_org`` with your organization name.
+
 Chef Compliance
 =====================================================
 Chef provides a fully functional Chef Compliance VM image that can be launched from the Azure Marketplace.
